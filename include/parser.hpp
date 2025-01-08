@@ -24,15 +24,22 @@ struct parser {
 
     bool parse() {
         assert(m_argc > 0);
-        if (m_argc - 1 < m_required) return abort();
 
+        bool have_version = false;
         int num_required = 0;
         std::unordered_set<std::string> parsed_shorthands;
         parsed_shorthands.reserve(m_argc);
 
-        for (int i = 1; i != m_argc; ++i) {
+        for (int i = 1; i < m_argc; ++i) {
             std::string parsed(m_argv[i]);
-            if (parsed == "-h" || parsed == "--help") return abort();
+            // shortcuts, bypassing required checks
+            if (parsed == "-h" || parsed == "--help")
+                return abort(false);
+            else if (parsed == "--version")
+                have_version = true;
+            else {
+                if (m_argc - 1 < m_required) return abort();
+            }
             int id = 0;
             if (const auto it = m_shorthands.find(parsed); it == m_shorthands.end()) {
                 std::cerr << "== error: shorthand '" + parsed + "' not found" << std::endl;
@@ -59,29 +66,31 @@ struct parser {
             cmd.value = parsed;
         }
 
-        if (num_required != m_required) return abort();
+        if (!have_version && num_required != m_required) return abort();
 
         return true;
     }
 
-    void help() const {
-        std::cerr << "Usage: " << m_argv[0] << " [-h,--help]";
-        const auto print = [this](bool with_description) {
+    void help(const bool err=true) const {
+        std::ostream *os = err ? &std::cerr : &std::cout;
+        *os << "Usage: " << m_argv[0] << "\t-h,--help";
+        const auto print = [this,os](bool with_description) {
             for (size_t i = 0; i != m_names.size(); ++i) {
                 auto const& cmd = m_cmds.at(m_names[i]);
-                std::cerr << " [" << cmd.shorthand;
-                if (!cmd.is_boolean) std::cerr << " " << m_names[i];
-                std::cerr << "]";
+                if (!with_description)
+                    *os << " ";
+                std::cerr << cmd.shorthand;
+                if (!cmd.is_boolean) *os << " " << m_names[i];
                 if (with_description) {
-                    std::cerr << "\n\t" << (cmd.is_required ? "REQUIRED: " : "") << cmd.descr
-                              << "\n\n";
+                    *os << "\n\t" << (cmd.is_required ? "REQUIRED: " : "") << cmd.descr
+                        << "\n\n";
                 }
             }
         };
         print(false);
-        std::cerr << "\n\n";
+        *os << "\n\nOPTIONS:\n\n";
         print(true);
-        std::cerr << " [-h,--help]\n\tPrint this help text and silently exits." << std::endl;
+        *os << "-h,--help\n\tPrint this help text and silently exits." << std::endl;
     }
 
     bool add(std::string const& name, std::string const& descr, std::string const& shorthand,
@@ -161,8 +170,8 @@ private:
     std::unordered_map<std::string, int> m_shorthands;
     std::vector<std::string> m_names;
 
-    bool abort() const {
-        help();
+    bool abort(const bool err=true) const {
+        help(err);
         return false;
     }
 };
